@@ -1,0 +1,35 @@
+{
+  "name": "trueforge-vscode-agent",
+  "displayName": "TrueForge Coding Agent",
+  "description": "A VS Code coding assistant powered by TrueForge.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "trueforge.askAgent",
+        "title": "TrueForge: Ask Agent"
+      },
+      {
+        "command": "trueforge.editSelection",
+        "title": "TrueForge: Edit Selection"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "trueforge.editSelection",
+        "key": "ctrl+alt+e",
+        "when": "editorTextFocus && editorHasSelection"
+      }
+    ]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@truefoundry/trueforge-sdk": "^0.184.1",
+    "diff": "^9.0.0",
+    "zod": "^4.6.7"
+  }
+}

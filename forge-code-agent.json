@@ -1,0 +1,62 @@
+{
+    "description":  "coding assistant for VS-Code Extention",
+    "name":  "forge-code-agent",
+    "manifest":  {
+                     "model":  {
+                                   "name":  "google-gemini/gemini-3-1-flash-lite",
+                                   "params":  {
+                                                  "reasoning_effort":  "medium"
+                                              }
+                               },
+                     "instructions":  "For coding requests, use the workspace tools to find and read relevant files.\nFollow existing project conventions and choose the implementation, test, and documentation files yourself.\nFor requested changes, call propose_edit and let the user review the diff in VS Code.\nRespect rejected edits. If blocked, explain the specific blocker in your final response.",
+                     "mcp_servers":  [
+                                         {
+                                             "name":  "vscode-workspace",
+                                             "enable_tools":  [
+                                                                  "find_files",
+                                                                  "read_file",
+                                                                  "search_text",
+                                                                  "propose_edit"
+                                                              ],
+                                             "disable_tools":  [
+
+                                                               ],
+                                             "preload_tools":  [
+
+                                                               ],
+                                             "require_approval_for_tools":  [
+                                                                                "@write",
+                                                                                "@destructive"
+                                                                            ],
+                                             "preload":  false
+                                         }
+                                     ],
+                     "config":  {
+                                    "iteration_limit":  512,
+                                    "sandbox":  {
+                                                    "enabled":  false,
+                                                    "file_downloads":  true
+                                                },
+                                    "dynamic_sub_agents":  {
+                                                               "enabled":  true
+                                                           },
+                                    "context_management":  {
+                                                               "compaction":  {
+                                                                                  "enabled":  true
+                                                                              },
+                                                               "large_tool_response":  {
+                                                                                           "enabled":  true
+                                                                                       }
+                                                           },
+                                    "generative_ui":  {
+                                                          "enabled":  true
+                                                      },
+                                    "ask_user_questions":  {
+                                                               "enabled":  false
+                                                           },
+                                    "web_search":  {
+                                                       "enabled":  false
+                                                   }
+                                }
+                 }
+}
