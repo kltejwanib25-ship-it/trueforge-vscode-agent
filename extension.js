@@ -1,8 +1,8 @@
 const vscode = require("vscode");
 const { reviewEdit } = require("./reviewEdit");
 const { startWorkspaceServer } = require("./workspaceServer");
-
-
+const { getFileMentions } = require("./mentions");
+const { getFileContext } = require("./mentions");
 function activate(context) {
   const output = vscode.window.createOutputChannel("TrueForge");
   startWorkspaceServer()
@@ -161,6 +161,7 @@ replyPanel?.webview.postMessage({ type: "replyStart" });
            const file = vscode.workspace.asRelativePath(editor.document.uri);
            message = `${instruction}\n\nSelected code from ${file}:\n${selectedCode}`;
         }
+      message += await getFileContext(instruction);
       const stream = await client.sessions.createTurnStream(session.id, {
         input: [{ type: "user.message", content: message }]
       });
