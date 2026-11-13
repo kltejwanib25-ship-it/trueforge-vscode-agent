@@ -204,7 +204,38 @@ server.registerTool(
     }
   }
 );
+  server.registerTool(
+    "run_terminal",
+    {
+      description: "Run git status --short in the open workspace to list changed files.",
+      inputSchema: {}
+    },
+    async () => {
+      const folder = vscode.workspace.workspaceFolders?.[0];
+      if (!folder) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Open a workspace folder first." }]
+        };
+      }
 
+      try {
+        const { stdout } = await runFile("git", ["status", "--short"], {
+          cwd: folder.uri.fsPath,
+          timeout: 10000,
+          windowsHide: true
+        });
+        return {
+          content: [{ type: "text", text: stdout.trimEnd() || "Working tree clean." }]
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `git status failed: ${error.message}` }]
+        };
+      }
+    }
+  );
 }
 
 module.exports = { registerWorkspaceTools };
