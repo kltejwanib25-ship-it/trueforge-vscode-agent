@@ -16,7 +16,8 @@
                                                                   "find_files",
                                                                   "read_file",
                                                                   "search_text",
-                                                                  "propose_edit"
+                                                                  "propose_edit",
+                                                                  "run_terminal"
                                                               ],
                                              "disable_tools":  [
 
