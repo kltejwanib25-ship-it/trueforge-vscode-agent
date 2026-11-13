@@ -20,7 +20,11 @@
       {
         "command": "trueforge.cancelRun",
         "title": "TrueForge: Cancel Run"
-      }
+      },
+      {
+  "command": "trueforge.openPanel",
+  "title": "TrueForge: Open Agent Panel"
+}
     ],
     "keybindings": [
       {

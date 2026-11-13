@@ -16,6 +16,88 @@ function activate(context) {
     vscode.window.showErrorMessage(message);
   });
   let busy = false;
+  let agentPanel;
+
+const openPanelCommand = vscode.commands.registerCommand(
+  "trueforge.openPanel",
+  () => {
+    if (agentPanel) {
+      agentPanel.reveal();
+      return;
+    }
+
+    agentPanel = vscode.window.createWebviewPanel(
+      "trueforgeAgent",
+      "TrueForge Agent",
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, localResourceRoots: [] }
+    );
+
+    const nonce = require("node:crypto").randomBytes(16).toString("hex");
+
+agentPanel.webview.html = `
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta http-equiv="Content-Security-Policy"
+            content="default-src 'none'; script-src 'nonce-${nonce}'">
+    </head>
+    <body>
+      <form id="requestForm">
+        <label for="request">Ask the agent</label>
+        <p><textarea id="request" rows="5" cols="40"></textarea></p>
+        <button type="submit">Send</button>
+        <button type="button" id="cancelRun">Cancel</button>
+      </form>
+      <h2>Reply</h2>
+<div id="reply"></div>
+<p id="runStatus" role="status"></p>
+      <script nonce="${nonce}">
+        const vscode = acquireVsCodeApi();
+        document.getElementById("cancelRun").addEventListener("click", () => {
+  vscode.postMessage({ type: "cancel" });
+});
+        const reply = document.getElementById("reply");
+
+window.addEventListener("message", ({ data }) => {
+  if (data.type === "replyStart") {
+  reply.textContent = "";
+  document.getElementById("runStatus").textContent = "Generating…";
+} else if (data.type === "replyChunk") {
+  reply.append(document.createTextNode(data.text));
+} else if (data.type === "runStatus") {
+  document.getElementById("runStatus").textContent = "Status: " + data.status;
+}
+});
+        const request = document.getElementById("request");
+        document.getElementById("requestForm").addEventListener("submit", event => {
+          event.preventDefault();
+          const text = request.value.trim();
+          if (text) vscode.postMessage({ type: "send", text });
+        });
+      </script>
+    </body>
+  </html>
+`;
+
+agentPanel.webview.onDidReceiveMessage(async message => {
+  if (message?.type === "cancel") {
+  await vscode.commands.executeCommand("trueforge.cancelRun");
+  return;
+}
+  if (message?.type === "send" && typeof message.text === "string") {
+    await vscode.commands.executeCommand("trueforge.askAgent", message.text);
+  }
+});
+    agentPanel.onDidDispose(() => {
+      agentPanel = undefined;
+    });
+    context.subscriptions.push(agentPanel);
+  }
+);
+
+context.subscriptions.push(openPanelCommand);
   let activeRun;
 
 const cancelCommand = vscode.commands.registerCommand(
@@ -38,7 +120,7 @@ const cancelCommand = vscode.commands.registerCommand(
 
 context.subscriptions.push(cancelCommand);
 
-  const command = vscode.commands.registerCommand("trueforge.askAgent", async () => {
+  const command = vscode.commands.registerCommand("trueforge.askAgent", async (panelInput) => {
     if (busy) {
       vscode.window.showInformationMessage("A TrueForge request is already open.");
       return;
@@ -46,15 +128,19 @@ context.subscriptions.push(cancelCommand);
 
     busy = true;
     try {
-      const input = await vscode.window.showInputBox({
-        title: "TrueForge: Ask Agent",
-        prompt: "What would you like the agent to do?"
-      });
+      const input = typeof panelInput === "string"
+  ? panelInput
+  : await vscode.window.showInputBox({
+      title: "TrueForge: Ask Agent",
+      prompt: "What would you like the agent to do?"
+    });
 
       const instruction = input?.trim();
       if (!instruction) return;
+      const replyPanel = typeof panelInput === "string" ? agentPanel : undefined;
+replyPanel?.webview.postMessage({ type: "replyStart" });
 
-      output.show(true);
+      if (!replyPanel) output.show(true);
       output.appendLine(`\nYou: ${instruction}`);
 
       const { TrueForge } = await import("@truefoundry/trueforge-sdk");
@@ -82,10 +168,21 @@ context.subscriptions.push(cancelCommand);
       for await (const { data: event } of stream.withMetadata()) {
         
         if (event.type === "model.message.delta") {
-          output.append(event.content ?? "");
-        }
+  const text = event.content ?? "";
+  output.append(text);
+
+  if (replyPanel && replyPanel === agentPanel) {
+    replyPanel.webview.postMessage({ type: "replyChunk", text });
+  }
+}
         if (event.type === "turn.done") {
           output.appendLine(`\nStatus: ${event.state.status}`);
+          if (replyPanel && replyPanel === agentPanel) {
+  replyPanel.webview.postMessage({
+    type: "runStatus",
+    status: event.state.status
+  });
+}
         }
       }
     } catch (error) {
