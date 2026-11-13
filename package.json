@@ -16,6 +16,10 @@
       {
         "command": "trueforge.editSelection",
         "title": "TrueForge: Edit Selection"
+      },
+      {
+        "command": "trueforge.cancelRun",
+        "title": "TrueForge: Cancel Run"
       }
     ],
     "keybindings": [

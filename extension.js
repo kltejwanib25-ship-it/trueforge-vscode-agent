@@ -16,6 +16,27 @@ function activate(context) {
     vscode.window.showErrorMessage(message);
   });
   let busy = false;
+  let activeRun;
+
+const cancelCommand = vscode.commands.registerCommand(
+  "trueforge.cancelRun",
+  async () => {
+    const run = activeRun;
+    if (!run) {
+      vscode.window.showInformationMessage("No Ask Agent response is streaming.");
+      return;
+    }
+
+    try {
+      await run.client.sessions.cancel(run.sessionId);
+      output.appendLine("\nCancellation requested.");
+    } catch (error) {
+      vscode.window.showErrorMessage(`Could not cancel the run: ${error.message}`);
+    }
+  }
+);
+
+context.subscriptions.push(cancelCommand);
 
   const command = vscode.commands.registerCommand("trueforge.askAgent", async () => {
     if (busy) {
@@ -57,8 +78,9 @@ function activate(context) {
       const stream = await client.sessions.createTurnStream(session.id, {
         input: [{ type: "user.message", content: message }]
       });
-
+      activeRun = { client, sessionId: session.id };
       for await (const { data: event } of stream.withMetadata()) {
+        
         if (event.type === "model.message.delta") {
           output.append(event.content ?? "");
         }
@@ -71,6 +93,7 @@ function activate(context) {
       output.appendLine(`\n${message}`);
       vscode.window.showErrorMessage(message);
     } finally {
+      activeRun = undefined;
       busy = false;
     }
   });
