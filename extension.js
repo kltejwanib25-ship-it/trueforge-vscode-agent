@@ -117,6 +117,11 @@ context.subscriptions.push(cancelCommand);
     prompt: "What should change in the highlighted code?"
   });
   if (!instruction?.trim()) return;
+  if (busy) {
+  vscode.window.showInformationMessage("A TrueForge request is already running.");
+  return;
+}
+busy = true;
 
   try {
     await vscode.window.withProgress(
@@ -145,6 +150,7 @@ context.subscriptions.push(cancelCommand);
         });
 
         let reply = "";
+        activeRun = { client, sessionId: session.id };
         let status;
         for await (const { data: event } of stream.withMetadata()) {
           if (event.type === "model.message.delta" && event.threadId === "main") {
@@ -152,7 +158,10 @@ context.subscriptions.push(cancelCommand);
           }
           if (event.type === "turn.done") status = event.state.status;
         }
-
+        if (status === "cancelled") {
+  vscode.window.showInformationMessage("TrueForge: Inline edit cancelled.");
+  return;
+}
         if (status !== "done") {
           throw new Error(`The turn ended with status ${status ?? "unknown"}.`);
         }
@@ -174,9 +183,12 @@ context.subscriptions.push(cancelCommand);
         await reviewEdit(document, original, updated, version);
       }
     );
-  } catch (error) {
-    vscode.window.showErrorMessage(`Edit preview failed: ${error.message}`);
-  }
+} catch (error) {
+  vscode.window.showErrorMessage(`Edit preview failed: ${error.message}`);
+} finally {
+  activeRun = undefined;
+  busy = false;
+}
 });
 
 context.subscriptions.push(output, command, editCommand);
