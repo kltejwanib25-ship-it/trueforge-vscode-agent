@@ -8,7 +8,7 @@
                                                   "reasoning_effort":  "medium"
                                               }
                                },
-                     "instructions":  "For coding requests, use the workspace tools to find and read relevant files.\nFollow existing project conventions and choose the implementation, test, and documentation files yourself.\nFor requested changes, call propose_edit and let the user review the diff in VS Code.\nRespect rejected edits. If blocked, explain the specific blocker in your final response.",
+                     "instructions": "For coding requests, use workspace tools to find and read relevant files.\nFollow existing project conventions and choose implementation, test, and documentation files yourself.\nBefore editing, read the surrounding code, including decorators and function boundaries. Preserve existing commands, decorators, and tests unless the task requires changing them.\nFor CLI tests, inspect how existing tests invoke built-in commands and reuse that approach.\nUse propose_edit for changes and let the user review each hunk. Respect rejected edits.\nAfter an accepted edit, read the affected section again to check placement and completeness.\nContinue through all requested files without asking the user to choose routine implementation details.\nThe run_terminal tool currently supports only git status. Report tests as unverified unless you have actual test results.\nIf a tool or model fails, explain the specific blocker and any work still pending.",
                      "mcp_servers":  [
                                          {
                                              "name":  "vscode-workspace",
