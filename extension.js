@@ -1,7 +1,7 @@
 const vscode = require("vscode");
 const { reviewEdit } = require("./reviewEdit");
 const { startWorkspaceServer } = require("./workspaceServer");
-const { getFileMentions } = require("./mentions");
+const { runTurnWithRecovery } = require("./turnRecovery");
 const { getFileContext } = require("./mentions");
 function activate(context) {
   const output = vscode.window.createOutputChannel("TrueForge");
@@ -110,7 +110,10 @@ const cancelCommand = vscode.commands.registerCommand(
     }
 
     try {
-      await run.client.sessions.cancel(run.sessionId);
+      run.controller.abort();
+      if (run.phase === "streaming") {
+        await run.client.sessions.cancel(run.sessionId);
+      }
       output.appendLine("\nCancellation requested.");
     } catch (error) {
       vscode.window.showErrorMessage(`Could not cancel the run: ${error.message}`);
@@ -127,6 +130,7 @@ context.subscriptions.push(cancelCommand);
     }
 
     busy = true;
+    let replyPanel;
     try {
       const input = typeof panelInput === "string"
   ? panelInput
@@ -137,7 +141,7 @@ context.subscriptions.push(cancelCommand);
 
       const instruction = input?.trim();
       if (!instruction) return;
-      const replyPanel = typeof panelInput === "string" ? agentPanel : undefined;
+      replyPanel = typeof panelInput === "string" ? agentPanel : undefined;
 replyPanel?.webview.postMessage({ type: "replyStart" });
 
       if (!replyPanel) output.show(true);
@@ -162,34 +166,54 @@ replyPanel?.webview.postMessage({ type: "replyStart" });
            message = `${instruction}\n\nSelected code from ${file}:\n${selectedCode}`;
         }
       message += await getFileContext(instruction);
-      const stream = await client.sessions.createTurnStream(session.id, {
-        input: [{ type: "user.message", content: message }]
-      });
-      activeRun = { client, sessionId: session.id };
-      for await (const { data: event } of stream.withMetadata()) {
-        
-        if (event.type === "model.message.delta") {
-  const text = event.content ?? "";
-  output.append(text);
-
-  if (replyPanel && replyPanel === agentPanel) {
-    replyPanel.webview.postMessage({ type: "replyChunk", text });
-  }
-}
-        if (event.type === "turn.done") {
-          output.appendLine(`\nStatus: ${event.state.status}`);
+      const run = { client, sessionId: session.id, controller: new AbortController(), phase: "starting" };
+      activeRun = run;
+      const state = await runTurnWithRecovery({
+        client, sessionId: session.id, message, run,
+        onEvent(event) {
+          if (event.type === "model.message.delta" &&
+              (event.threadId == null || event.threadId === "main")) {
+            const text = typeof event.content === "string" ? event.content : "";
+            output.append(text);
+            if (replyPanel && replyPanel === agentPanel) {
+              replyPanel.webview.postMessage({ type: "replyChunk", text });
+            }
+          }
+          if (event.type === "turn.done" && event.state.status === "error") {
+            const text = `\n[Turn Error] ${event.state.message}\n`;
+            output.appendLine(text);
+            if (replyPanel && replyPanel === agentPanel) {
+              replyPanel.webview.postMessage({ type: "replyChunk", text });
+            }
+          }
+        },
+        onAttempt(attempt) {
           if (replyPanel && replyPanel === agentPanel) {
-  replyPanel.webview.postMessage({
-    type: "runStatus",
-    status: event.state.status
-  });
-}
+            replyPanel.webview.postMessage({ type: "runStatus", status: attempt ? "resuming" : "running" });
+          }
+        },
+        onRetry({ attempt, milliseconds }) {
+          const status = `Retry ${attempt}/2 in ${Math.ceil(milliseconds / 1000)} seconds. Cancel stops recovery.`;
+          output.appendLine(`\n${status}`);
+          if (replyPanel && replyPanel === agentPanel) {
+            replyPanel.webview.postMessage({ type: "runStatus", status });
+          }
         }
+      });
+      const status = state.status === "done" && state.requiredActions?.length
+        ? "action required — open this session in TrueForge" : state.status;
+      output.appendLine(`\nStatus: ${status}`);
+      if (replyPanel && replyPanel === agentPanel) {
+        replyPanel.webview.postMessage({ type: "runStatus", status });
       }
     } catch (error) {
       const message = `TrueForge request failed: ${error.message}`;
       output.appendLine(`\n${message}`);
       vscode.window.showErrorMessage(message);
+      if (replyPanel && replyPanel === agentPanel) {
+        replyPanel.webview.postMessage({ type: "replyChunk", text: "\n" + message });
+        replyPanel.webview.postMessage({ type: "runStatus", status: "error" });
+      }
     } finally {
       activeRun = undefined;
       busy = false;
@@ -243,26 +267,26 @@ busy = true;
           })
         ].join("\n");
 
-        const stream = await client.sessions.createTurnStream(session.id, {
-          input: [{ type: "user.message", content: prompt }]
-        });
-
         let reply = "";
-        activeRun = { client, sessionId: session.id };
-        let status;
-        for await (const { data: event } of stream.withMetadata()) {
-          if (event.type === "model.message.delta" && event.threadId === "main") {
-            reply += event.content ?? "";
+        const run = { client, sessionId: session.id, controller: new AbortController(), phase: "starting" };
+        activeRun = run;
+        const state = await runTurnWithRecovery({
+          client, sessionId: session.id, message: prompt, run,
+          onAttempt() { reply = ""; },
+          onEvent(event) {
+            if (event.type === "model.message.delta" && event.threadId === "main" &&
+                typeof event.content === "string") reply += event.content;
+          },
+          onRetry({ attempt, milliseconds, message }) {
+            output.appendLine(`Inline edit: ${message}\nRetry ${attempt}/2 in ${Math.ceil(milliseconds / 1000)} seconds.`);
           }
-          if (event.type === "turn.done") status = event.state.status;
+        });
+        if (state.status === "cancelled") {
+          vscode.window.showInformationMessage("TrueForge: Inline edit cancelled.");
+          return;
         }
-        if (status === "cancelled") {
-  vscode.window.showInformationMessage("TrueForge: Inline edit cancelled.");
-  return;
-}
-        if (status !== "done") {
-          throw new Error(`The turn ended with status ${status ?? "unknown"}.`);
-        }
+        if (state.status !== "done") throw new Error(state.message || `Turn ended with status ${state.status}.`);
+        if (state.requiredActions?.length) throw new Error(`Action required in TrueForge session ${session.id}.`);
 
         const proposal = JSON.parse(reply);
         if (typeof proposal?.replacement !== "string") {

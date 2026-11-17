@@ -115,7 +115,7 @@ server.registerTool(
     }
 
     try {
-      const { stdout } = await runGit(
+      const { stdout } = await runFile(
         "git",
         ["grep", "--no-color", "-n", "-I", "-i", "-F", "-e", query, "--", "."],
         { cwd: folder.uri.fsPath, maxBuffer: 1024 * 1024, timeout: 10000 }
