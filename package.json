@@ -3,6 +3,7 @@
   "displayName": "TrueForge Coding Agent",
   "description": "A VS Code coding assistant powered by TrueForge.",
   "version": "0.0.1",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -22,9 +23,9 @@
         "title": "TrueForge: Cancel Run"
       },
       {
-  "command": "trueforge.openPanel",
-  "title": "TrueForge: Open Agent Panel"
-}
+        "command": "trueforge.openPanel",
+        "title": "TrueForge: Open Agent Panel"
+      }
     ],
     "keybindings": [
       {
